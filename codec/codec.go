@@ -119,6 +119,7 @@ func (h *codecHandler) Run() {
 		defer close(h.yuvImgQueue)
 		packet := avcodec.AvPacketAlloc()
 		yuvLineSize := avutil.Linesize(h.frameYUV)
+
 		for h.formatContext.AvReadFrame(packet) >= 0 {
 			if packet.StreamIndex() != h.videoStreamNb {
 				continue
@@ -127,7 +128,6 @@ func (h *codecHandler) Run() {
 				log.Printf("AvcodecSendPacket error: %v\n", avutil.ErrorFromCode(errno))
 				return
 			}
-
 			for {
 				if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameRAW))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
 					break
@@ -135,8 +135,8 @@ func (h *codecHandler) Run() {
 					log.Printf("AvcodecReceiveFrame error: %v\n", avutil.ErrorFromCode(errno))
 					return
 				}
-				rawLineSize := avutil.Linesize(h.frameRAW)
 
+				rawLineSize := avutil.Linesize(h.frameRAW)
 				if errno := swscale.SwsScale2(h.swsCtx, avutil.Data(h.frameRAW),
 					rawLineSize, 0, h.codecCtx.Height(),
 					avutil.Data(h.frameYUV), yuvLineSize); errno < 0 {
@@ -146,7 +146,7 @@ func (h *codecHandler) Run() {
 
 				yuvImg, err := avutil.GetPicture(h.frameYUV)
 				if err != nil {
-					log.Printf("avutil.GetPicture error: %v\n",err)
+					log.Printf("avutil.GetPicture error: %v\n", err)
 					return
 				}
 				h.yuvImgQueue <- yuvImg
@@ -155,7 +155,13 @@ func (h *codecHandler) Run() {
 	}()
 }
 
-func (h *codecHandler) YUVImgRecQue() <-chan *image.YCbCr{
+// GetPerFrameDuration calculate the duration of one fraome, ms
+func (h *codecHandler) GetPerFrameDuration() uint32 {
+	timeBase := float64(h.codecCtx.AvCodecGetPktTimebase2().Num()) / float64(h.codecCtx.AvCodecGetPktTimebase2().Den())
+	return uint32(timeBase * 1000000)
+}
+
+func (h *codecHandler) YUVImgRecQue() <-chan *image.YCbCr {
 	return h.yuvImgQueue
 }
 

@@ -75,6 +75,7 @@ func Main() {
 	go func() {
 		yuvLineSize := codecHandler.GetYUVFrameLineSize()
 		yuvImageQue := codecHandler.YUVImgRecQue()
+		delay := codecHandler.GetPerFrameDuration()
 		for yuvImg := range yuvImageQue {
 			if err := textureCtx.UpdateYUV(nil,
 				yuvImg.Y,
@@ -92,7 +93,7 @@ func Main() {
 				continue
 			}
 			renderCtx.Present()
-			sdl.Delay(10)
+			sdl.Delay(delay)
 		}
 	}()
 
