@@ -1,32 +1,31 @@
 package codec
 
-//Package codec provides codec for video
+//Package codec provides codec only for video, not support audio now
 
 import (
 	"errors"
 	"fmt"
+	"image"
+	"log"
+	"unsafe"
+
 	"github.com/giorgisio/goav/avcodec"
 	"github.com/giorgisio/goav/avformat"
 	"github.com/giorgisio/goav/avutil"
 	"github.com/giorgisio/goav/swscale"
-	"image"
-	"log"
-	"unsafe"
 )
 
 type codecHandler struct {
 	formatContext *avformat.Context
-	videoStreamNb int // number of the video stream
-	codecCtx      *avcodec.Context
+	videoStreamNb int              // number of the video stream
+	codecCtx      *avcodec.Context // ctx of decoder or encoder
 	frameYUV      *avutil.Frame
 	swsCtx        *swscale.Context
-	frameRAW      *avutil.Frame     // just avoid alloc frame frequently
-	yuvImgQueue   chan *image.YCbCr // notify codec
+	yuvImgQueue   chan *image.YCbCr
 }
 
 func NewCodecHandler() *codecHandler {
 	return &codecHandler{
-		frameRAW:    avutil.AvFrameAlloc(),
 		yuvImgQueue: make(chan *image.YCbCr, 1<<10)}
 }
 
@@ -35,17 +34,15 @@ func (h *codecHandler) InitFormatContextWithVideoURI(uri string) error {
 	if errno := avformat.AvformatOpenInput(&formatContext, uri, nil, nil); errno != 0 {
 		return errors.New("avformat.AvformatOpenInput error: " + avutil.ErrorFromCode(errno).Error())
 	}
-
 	if errno := formatContext.AvformatFindStreamInfo(nil); errno != 0 {
 		return errors.New("formatContext.AvformatFindStreamInfo: " + avutil.ErrorFromCode(errno).Error())
-
 	}
 	formatContext.AvDumpFormat(0, uri, 0)
 	h.formatContext = formatContext
 	return nil
 }
 
-func (h *codecHandler) InitAndOpenVideoCodecCtx() error {
+func (h *codecHandler) FindVideoStream() error {
 	videoStream := -1
 	for i, streams := 0, h.formatContext.Streams(); i < int(h.formatContext.NbStreams()); i++ {
 		if streams[i].Codec().GetCodecType() == avformat.AVMEDIA_TYPE_VIDEO {
@@ -57,22 +54,24 @@ func (h *codecHandler) InitAndOpenVideoCodecCtx() error {
 		return errors.New("not found video stream")
 	}
 	h.videoStreamNb = videoStream
+	return nil
+}
 
-	codecCtxOri := h.formatContext.Streams()[videoStream].Codec()
-	codec := avcodec.AvcodecFindDecoder(avcodec.CodecId(codecCtxOri.GetCodecId()))
-	if codec == nil {
+func (h *codecHandler) InitAndOpenVideoDecoder() error {
+	codecCtxOri := h.formatContext.Streams()[h.videoStreamNb].Codec()
+	decoder := avcodec.AvcodecFindDecoder(avcodec.CodecId(codecCtxOri.GetCodecId()))
+	if decoder == nil {
 		return errors.New("avcodec.AvcodecFindDecoder not found decoder for video stream")
 	}
 
-	codecCtx := codec.AvcodecAllocContext3()
-	if errno := codecCtx.AvcodecCopyContext((*avcodec.Context)(unsafe.Pointer(codecCtxOri))); errno < 0 {
-		return errors.New("codecCtx.AvcodecCopyContext error: " + avutil.ErrorFromCode(errno).Error())
+	decoderCtx := decoder.AvcodecAllocContext3()
+	if errno := decoderCtx.AvcodecCopyContext((*avcodec.Context)(unsafe.Pointer(codecCtxOri))); errno < 0 {
+		return fmt.Errorf("codecCtx.AvcodecCopyContext error: %v", avutil.ErrorFromCode(errno))
 	}
-	if errno := codecCtx.AvcodecOpen2(codec, nil); errno < 0 {
-		return errors.New("codecCtx.AvcodecOpen2 error: " + avutil.ErrorFromCode(errno).Error())
+	if errno := decoderCtx.AvcodecOpen2(decoder, nil); errno < 0 {
+		return fmt.Errorf("codecCtx.AvcodecOpen2 error: %v", avutil.ErrorFromCode(errno))
 	}
-
-	h.codecCtx = codecCtx
+	h.codecCtx = decoderCtx
 	return nil
 }
 
@@ -113,13 +112,13 @@ func (h *codecHandler) InitSwsContext() {
 	)
 }
 
-// Run resolve frame from video and push packet to codec
+// Run read frame from video, push the frame packet to codec, and append YUVPic to queue
 func (h *codecHandler) Run() {
 	go func() {
 		defer close(h.yuvImgQueue)
 		packet := avcodec.AvPacketAlloc()
 		yuvLineSize := avutil.Linesize(h.frameYUV)
-
+		frameRAW := avutil.AvFrameAlloc()
 		for h.formatContext.AvReadFrame(packet) >= 0 {
 			if packet.StreamIndex() != h.videoStreamNb {
 				continue
@@ -129,15 +128,15 @@ func (h *codecHandler) Run() {
 				return
 			}
 			for {
-				if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameRAW))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
+				if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(frameRAW))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
 					break
 				} else if errno < 0 {
 					log.Printf("AvcodecReceiveFrame error: %v\n", avutil.ErrorFromCode(errno))
 					return
 				}
 
-				rawLineSize := avutil.Linesize(h.frameRAW)
-				if errno := swscale.SwsScale2(h.swsCtx, avutil.Data(h.frameRAW),
+				rawLineSize := avutil.Linesize(frameRAW)
+				if errno := swscale.SwsScale2(h.swsCtx, avutil.Data(frameRAW),
 					rawLineSize, 0, h.codecCtx.Height(),
 					avutil.Data(h.frameYUV), yuvLineSize); errno < 0 {
 					log.Printf("SwsScale2 error: %v\n", avutil.ErrorFromCode(errno))
@@ -155,7 +154,7 @@ func (h *codecHandler) Run() {
 	}()
 }
 
-// GetPerFrameDuration calculate the duration of one fraome, ms
+// GetPerFrameDuration calculate the duration of one frame, ms
 func (h *codecHandler) GetPerFrameDuration() uint32 {
 	timeBase := float64(h.codecCtx.AvCodecGetPktTimebase2().Num()) / float64(h.codecCtx.AvCodecGetPktTimebase2().Den())
 	return uint32(timeBase * 1000000)

@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
+
 	"github.com/l-f-h/video/codec"
 	"github.com/veandco/go-sdl2/sdl"
-	"log"
 )
 
 func main() {
@@ -13,13 +14,16 @@ func main() {
 
 func Main() {
 	fileName := "./demo.mp4"
-
 	codecHandler := codec.NewCodecHandler()
 	if err := codecHandler.InitFormatContextWithVideoURI(fileName); err != nil {
 		log.Fatalf("codecHandler.InitFormatContextWithVideoURI error: %v", err)
 	}
 
-	if err := codecHandler.InitAndOpenVideoCodecCtx(); err != nil {
+	if err := codecHandler.FindVideoStream(); err != nil {
+		log.Fatalf("codecHandler.FindVideoStream error: %v", err)
+	}
+
+	if err := codecHandler.InitAndOpenVideoDecoder(); err != nil {
 		log.Fatalf("codecHandler.InitAndOpenVideoCodecCtx error: %v", err)
 	}
 
