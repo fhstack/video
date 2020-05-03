@@ -8,3 +8,7 @@ var (
 
 func TestEncoder(t *testing.T) {
 }
+
+func TestDecoder(t *testing.T) {
+
+}

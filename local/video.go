@@ -1,20 +1,28 @@
 package main
 
+// test codec
+
 import (
 	"fmt"
-	"github.com/l-f-h/video/cam"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"reflect"
 	"unsafe"
 
+	"github.com/l-f-h/video/cam"
+
 	"github.com/l-f-h/video/codec"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+const (
+	stand30PFS = (float64(1) / float64(30)) * 1000
+)
+
 func main() {
-	sdl.Main(videoEncode)
+	sdl.Main(videoDecode)
 }
 
 // open cam and encoding the video to h264
@@ -32,7 +40,7 @@ func videoEncode() {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, os.Interrupt, os.Kill)
 	go func() {
-		<- ch
+		<-ch
 		webcam.Stop()
 		codecHandler.Stop()
 		os.Exit(-1)
@@ -64,6 +72,7 @@ func videoEncode() {
 			shd.Cap = p.Size()
 			data := *(*[]byte)(unsafe.Pointer(&shd))
 			_, err := f.Write(data)
+			//fmt.Println(len(data))
 			//encodedStr := hex.EncodeToString(data)
 			//fmt.Println(encodedStr)
 			if err != nil {
@@ -72,12 +81,12 @@ func videoEncode() {
 		}
 	}()
 
-	<- ch
+	<-ch
 }
 
 // decode the video and play
 func videoDecode() {
-	fileName := "./demo.mp4"
+	fileName := "./demo.h264"
 	codecHandler := codec.NewCodecHandler()
 	if err := codecHandler.InitFormatContextWithVideoURI(fileName); err != nil {
 		log.Fatalf("codecHandler.InitFormatContextWithVideoURI error: %v", err)
@@ -118,26 +127,10 @@ func videoDecode() {
 		fmt.Println("sdl init successful")
 	})
 
-	ch := make(chan struct{})
-	go sdl.Do(func() {
-		running := true
-		for running {
-			for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-				switch event.(type) {
-				case *sdl.QuitEvent:
-					fmt.Println("Quit")
-					running = false
-					ch <- struct{}{}
-				}
-			}
-		}
-	})
-
 	// read frame
 	go func() {
 		yuvLineSize := codecHandler.GetYUVFrameLineSize()
 		yuvImageQue := codecHandler.YUVImgRecQue()
-		delay := codecHandler.GetPerFrameDuration()
 		for yuvImg := range yuvImageQue {
 			if err := textureCtx.UpdateYUV(nil,
 				yuvImg.Y,
@@ -155,10 +148,21 @@ func videoDecode() {
 				continue
 			}
 			renderCtx.Present()
-			sdl.Delay(delay)
+			sdl.Delay(uint32(math.Floor(stand30PFS)))
 		}
 	}()
 
-	<-ch
-	sdl.Quit()
+	sdl.Do(func() {
+		running := true
+		for running {
+			for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+				switch event.(type) {
+				case *sdl.QuitEvent:
+					fmt.Println("Quit")
+					running = false
+					os.Exit(-1)
+				}
+			}
+		}
+	})
 }

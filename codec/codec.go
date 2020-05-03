@@ -85,7 +85,6 @@ func (h *codecHandler) initYUVFrameContainer() error {
 	if frameYUV == nil {
 		return errors.New("avutil.AvFrameAlloc failed")
 	}
-
 	if err := avutil.AvSetFrame(frameYUV, h.codecCtx.Width(), h.codecCtx.Height(), avcodec.AV_PIX_FMT_YUV); err != nil {
 		return fmt.Errorf("avutil.AvSetFrame error: %v", err)
 	}
