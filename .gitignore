@@ -1,4 +1,5 @@
 .idea
 output
 *.mp4
+*.h264
 *.out

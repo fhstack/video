@@ -2,17 +2,81 @@ package main
 
 import (
 	"fmt"
+	"github.com/l-f-h/video/cam"
 	"log"
+	"os"
+	"os/signal"
+	"reflect"
+	"unsafe"
 
 	"github.com/l-f-h/video/codec"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 func main() {
-	sdl.Main(Main)
+	sdl.Main(videoEncode)
 }
 
-func Main() {
+// open cam and encoding the video to h264
+func videoEncode() {
+	codecHandler := codec.NewCodecHandler()
+	if err := codecHandler.InitH264Encoder(); err != nil {
+		log.Fatalf("InitH264Encoder err: %v", err)
+	}
+
+	webcam, err := cam.NewWebCamWithLocalCam()
+	if err != nil {
+		log.Fatalf("NewWebCamWithLocalCam error: %v", err)
+	}
+
+	ch := make(chan os.Signal)
+	signal.Notify(ch, os.Interrupt, os.Kill)
+	go func() {
+		<- ch
+		webcam.Stop()
+		codecHandler.Stop()
+		os.Exit(-1)
+	}()
+
+	sdl.Do(webcam.Start)
+	go func() {
+		for frame := range webcam.FrameQueue() {
+			if err := codecHandler.H264EncoderInputRGBImage(frame); err != nil {
+				log.Fatalf("H264EncoderInputRGBImage error: %v", err)
+			}
+		}
+	}()
+
+	// output h264 file for testing
+	go func() {
+		f, err := os.Create("demo.h264")
+		if err != nil {
+			log.Fatalf("Create output file error: %v", err)
+		}
+		defer func() {
+			f.Sync()
+			f.Close()
+		}()
+		for p := range codecHandler.GetH264EncoderOutputPacketQueue() {
+			shd := reflect.SliceHeader{}
+			shd.Data = uintptr(unsafe.Pointer(p.Data()))
+			shd.Len = p.Size()
+			shd.Cap = p.Size()
+			data := *(*[]byte)(unsafe.Pointer(&shd))
+			_, err := f.Write(data)
+			//encodedStr := hex.EncodeToString(data)
+			//fmt.Println(encodedStr)
+			if err != nil {
+				log.Fatalf("write file error: %v", err)
+			}
+		}
+	}()
+
+	<- ch
+}
+
+// decode the video and play
+func videoDecode() {
 	fileName := "./demo.mp4"
 	codecHandler := codec.NewCodecHandler()
 	if err := codecHandler.InitFormatContextWithVideoURI(fileName); err != nil {
@@ -27,14 +91,8 @@ func Main() {
 		log.Fatalf("codecHandler.InitAndOpenVideoCodecCtx error: %v", err)
 	}
 
-	if err := codecHandler.InitYUVFrameContainer(); err != nil {
-		log.Fatalf("codecHandler.InitYUVFrameContainer error: %v", err)
-	}
-
-	codecHandler.InitSwsContext()
-
-	// Begin
-	codecHandler.Run()
+	// async
+	codecHandler.DecoderRun()
 
 	var (
 		window     = &sdl.Window{}
