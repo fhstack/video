@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	stand30PFS = (float64(1) / float64(30)) * 1000
+	stand30FPS = (float64(1) / float64(30)) * 1000
 )
 
 func main() {
@@ -124,6 +124,9 @@ func videoDecode() {
 		window.SetTitle("Video From LFH")
 		textureCtx, err = renderCtx.CreateTexture(sdl.PIXELFORMAT_IYUV, sdl.TEXTUREACCESS_TARGET,
 			codecHandler.GetVideoWidth(), codecHandler.GetVideoHeight())
+		if err != nil {
+			log.Fatalf("renderCtx.CreateTexture error: %v", err)
+		}
 		fmt.Println("sdl init successful")
 	})
 
@@ -148,7 +151,7 @@ func videoDecode() {
 				continue
 			}
 			renderCtx.Present()
-			sdl.Delay(uint32(math.Floor(stand30PFS)))
+			sdl.Delay(uint32(math.Floor(stand30FPS)))
 		}
 	}()
 

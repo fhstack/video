@@ -15,6 +15,10 @@ import (
 	"github.com/giorgisio/goav/swscale"
 )
 
+const (
+	PerFrameDelayOf30FPS = (float64(1) / float64(30)) * 1000  // ms
+)
+
 type codecHandler struct {
 	formatContext   *avformat.Context
 	videoStreamNb   int              // number of the video stream
@@ -78,6 +82,58 @@ func (h *codecHandler) InitAndOpenVideoDecoder() error {
 	}
 	h.codecCtx = decoderCtx
 	return nil
+}
+
+func (h *codecHandler) InitAndOpenH264Decoder() error {
+	h264Decoder := avcodec.AvcodecFindDecoder(avcodec.CodecId(avcodec.AV_CODEC_ID_H264))
+	if h264Decoder == nil {
+		panic("not found h264 decoder!")
+	}
+
+	h264DecoderCtx := h264Decoder.AvcodecAllocContext3()
+	if errno := h264DecoderCtx.AvcodecOpen2(h264Decoder, nil); errno < 0 {
+		return fmt.Errorf("codecCtx.AvcodecOpen2 error: %v", avutil.ErrorFromCode(errno))
+	}
+	h.codecCtx = h264DecoderCtx
+
+	frameYUV := avutil.AvFrameAlloc()
+	if frameYUV == nil {
+		return errors.New("avutil.AvFrameAlloc failed")
+	}
+	if err := avutil.AvSetFrame(frameYUV, 1280, 720, avcodec.AV_PIX_FMT_YUV); err != nil {
+		return fmt.Errorf("avutil.AvSetFrame error: %v", err)
+	}
+
+	h.frameYUV = frameYUV
+	return nil
+}
+
+func (h *codecHandler) H264Decode(data []byte) error {
+	packet := avcodec.AvPacketAlloc()
+	packet.AvNewPacket(len(data))
+	pdata := packet.Data()
+	for i := 0;i < packet.Size(); i++{
+		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(pdata)) + uintptr(i))) = uint8(data[i])
+	}
+
+	if errno := h.codecCtx.AvcodecSendPacket(packet); errno < 0 {
+		return fmt.Errorf("AvcodecSendPacket error: %v", avutil.ErrorFromCode(errno))
+	}
+
+	for {
+		if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameYUV))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
+			return nil
+		} else if errno < 0 {
+			return fmt.Errorf("AvcodecReceiveFrame error: %v", avutil.ErrorFromCode(errno))
+		}
+
+		yuvImg, err := avutil.GetPicture(h.frameYUV)
+		if err != nil {
+			log.Printf("avutil.GetPicture error: %v\n", err)
+			return err
+		}
+		h.yuvImgQueue <- yuvImg
+	}
 }
 
 func (h *codecHandler) initYUVFrameContainer() error {
