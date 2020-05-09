@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	PerFrameDelayOf30FPS = (float64(1) / float64(30)) * 1000  // ms
+	PerFrameDelayOf30FPS = (float64(1) / float64(30)) * 1000 // ms
 )
 
 type codecHandler struct {
@@ -27,6 +27,7 @@ type codecHandler struct {
 	swsCtx          *swscale.Context
 	yuvImgQueue     chan *image.YCbCr
 	h264PacketQueue chan *avcodec.Packet
+	rawData         chan []byte
 	stop            bool
 }
 
@@ -35,6 +36,7 @@ func NewCodecHandler() *codecHandler {
 		stop:            false,
 		yuvImgQueue:     make(chan *image.YCbCr, 1<<10),
 		h264PacketQueue: make(chan *avcodec.Packet, 1<<10),
+		rawData:         make(chan []byte, 1<<10),
 	}
 }
 
@@ -105,34 +107,79 @@ func (h *codecHandler) InitAndOpenH264Decoder() error {
 	}
 
 	h.frameYUV = frameYUV
+
+	go h.parserH264Packet()
 	return nil
 }
 
-func (h *codecHandler) H264Decode(data []byte) error {
+func (h *codecHandler) PushRawData(data []byte) {
+	h.rawData <- data
+}
+
+func (h *codecHandler) parserH264Packet() {
+	data := make([]byte, 0, 1<<10)
+	succZeroCnt := 0 // successive zero cnt
+	for raw := range h.rawData {
+		for i := 0; i < len(raw); i++ {
+			b := raw[i]
+			data = append(data, b)
+			if b != 0 {
+				if b == 1 && succZeroCnt >= 2 {
+					var completePacket []byte
+					if succZeroCnt == 3 { // found 0x00 00 00 01
+						completePacket = data[:len(data)-4]
+						data = data[len(data)-4:]
+					} else if succZeroCnt == 2 { // found 0x00 00 01
+						completePacket = data[:len(data)-3]
+						data = data[len(data)-3:]
+					}
+					h.productOnePacket(completePacket)
+				}
+				succZeroCnt = 0
+			} else {
+				succZeroCnt++
+			}
+		}
+	}
+}
+
+func (h *codecHandler) productOnePacket(packetData []byte) {
+	if len(packetData) == 0 {
+		return
+	}
+	//encodedStr := hex.EncodeToString(packetData)
+	//fmt.Println(encodedStr)
 	packet := avcodec.AvPacketAlloc()
-	packet.AvNewPacket(len(data))
+	packet.AvNewPacket(len(packetData))
 	pdata := packet.Data()
-	for i := 0;i < packet.Size(); i++{
-		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(pdata)) + uintptr(i))) = uint8(data[i])
+	for i := 0; i < packet.Size(); i++ {
+		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(pdata)) + uintptr(i))) = uint8(packetData[i])
 	}
+	h.h264PacketQueue <- packet
+}
 
-	if errno := h.codecCtx.AvcodecSendPacket(packet); errno < 0 {
-		return fmt.Errorf("AvcodecSendPacket error: %v", avutil.ErrorFromCode(errno))
-	}
-
-	for {
-		if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameYUV))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
-			return nil
-		} else if errno < 0 {
-			return fmt.Errorf("AvcodecReceiveFrame error: %v", avutil.ErrorFromCode(errno))
+func (h *codecHandler) H264Decode() {
+	for packet := range h.h264PacketQueue {
+		if errno := h.codecCtx.AvcodecSendPacket(packet); errno < 0 {
+			log.Printf("AvcodecSendPacket error: %v\n", avutil.ErrorFromCode(errno))
+			continue
 		}
+		packet.AvFreePacket()
+		avutil.AvFree(unsafe.Pointer(packet.Data()))
+		for {
+			if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameYUV))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
+				break
+			} else if errno < 0 {
+				log.Fatalf("AvcodecReceiveFrame error: %v", avutil.ErrorFromCode(errno))
+			}
 
-		yuvImg, err := avutil.GetPicture(h.frameYUV)
-		if err != nil {
-			log.Printf("avutil.GetPicture error: %v\n", err)
-			return err
+			yuvImg, err := avutil.GetPicture(h.frameYUV)
+			if err != nil {
+				log.Fatalf("avutil.GetPicture error: %v\n", err)
+				return
+			}
+			h.yuvImgQueue <- yuvImg
 		}
-		h.yuvImgQueue <- yuvImg
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	sdl.Main(tcp)
+	sdl.Main(udp)
 }
 
 func tcp() {
@@ -85,11 +85,17 @@ func transmit(conn net.Conn) {
 			data := *(*[]byte)(unsafe.Pointer(&shd))
 			//encodedStr := hex.EncodeToString(data)
 			//fmt.Println(encodedStr)
+			fmt.Println(len(data))
 			n, err := conn.Write(data)
 			if err != nil {
 				log.Fatalf("write error: %v", err)
 			}
-			fmt.Println(n)
+			//fmt.Println(n)
+			//n, err = conn.Write(data[len(data)/2:])
+			//if err != nil {
+			//	log.Fatalf("write error: %v", err)
+			//}
+			//fmt.Println(n)
 		}
 	}()
 

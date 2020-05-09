@@ -8,10 +8,16 @@ import (
 	"log"
 	"math"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 )
 
 func main() {
-	sdl.Main(tcp)
+	go func() {
+		log.Println(http.ListenAndServe("localhost:9999", nil))
+	}()
+
+	sdl.Main(udp)
 }
 
 func tcp() {
@@ -48,10 +54,13 @@ func decodeH264Stream(conn net.Conn) {
 		log.Fatalf("InitAndOpenH264Decoder error: %v", err)
 	}
 
+	go codecHandler.H264Decode()
+
 	go func() {
 		defer func() {
 			over <- struct{}{}
 		}()
+
 		for {
 			data := make([]byte, 65536)
 			n, err := conn.Read(data)
@@ -62,10 +71,8 @@ func decodeH264Stream(conn net.Conn) {
 				log.Fatalf("ReadFrom error: %v", err)
 			}
 			data = data[:n]
-			fmt.Println(n)
-			if err := codecHandler.H264Decode(data); err != nil {
-				log.Fatalf("H264Decode error: %v", err)
-			}
+			// fmt.Println(n)
+			codecHandler.PushRawData(data)
 		}
 	}()
 
