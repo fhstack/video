@@ -7,6 +7,11 @@ import (
 	"log"
 )
 
+const (
+	queBuffer = 32   // avoid to use large buffer
+)
+
+
 type WebCam struct {
 	cam      *gocv.VideoCapture
 	frameQue chan image.Image
@@ -16,7 +21,7 @@ type WebCam struct {
 func NewWebCamWithURL(url string) (*WebCam, error) {
 	c := &WebCam{}
 	c.stop = false
-	c.frameQue = make(chan image.Image, 1<<10)
+	c.frameQue = make(chan image.Image, queBuffer)
 	cam, err := gocv.OpenVideoCapture(url)
 	if err != nil {
 		return nil, fmt.Errorf("OpenVideoCapture error: %v", err)
@@ -28,7 +33,7 @@ func NewWebCamWithURL(url string) (*WebCam, error) {
 func NewWebCamWithLocalCam() (*WebCam, error) {
 	c := &WebCam{}
 	c.stop = false
-	c.frameQue = make(chan image.Image, 1<<10)
+	c.frameQue = make(chan image.Image, queBuffer)
 	cam, err := gocv.OpenVideoCapture(0)
 	if err != nil {
 		return nil, fmt.Errorf("OpenVideoCapture error: %v", err)

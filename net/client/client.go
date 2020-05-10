@@ -1,25 +1,30 @@
 package main
 
 import (
-	"fmt"
-	"github.com/l-f-h/video/cam"
-	"github.com/l-f-h/video/codec"
-	"github.com/veandco/go-sdl2/sdl"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"reflect"
 	"unsafe"
+
+	"github.com/l-f-h/video/cam"
+	"github.com/l-f-h/video/codec"
+	"github.com/veandco/go-sdl2/sdl"
+	_ "net/http/pprof"
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:10000", nil))
+	}()
 	sdl.Main(udp)
 }
 
 func tcp() {
 	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
-		Port:8888,
+		Port: 8888,
 	})
 
 	if err != nil {
@@ -74,7 +79,6 @@ func transmit(conn net.Conn) {
 		}
 	}()
 
-
 	// transmit the h264 frame
 	go func() {
 		for p := range codecHandler.GetH264EncoderOutputPacketQueue() {
@@ -85,17 +89,11 @@ func transmit(conn net.Conn) {
 			data := *(*[]byte)(unsafe.Pointer(&shd))
 			//encodedStr := hex.EncodeToString(data)
 			//fmt.Println(encodedStr)
-			fmt.Println(len(data))
-			n, err := conn.Write(data)
+			//fmt.Println(len(data))
+			_, err := conn.Write(data)
 			if err != nil {
 				log.Fatalf("write error: %v", err)
 			}
-			//fmt.Println(n)
-			//n, err = conn.Write(data[len(data)/2:])
-			//if err != nil {
-			//	log.Fatalf("write error: %v", err)
-			//}
-			//fmt.Println(n)
 		}
 	}()
 

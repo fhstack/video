@@ -17,6 +17,9 @@ import (
 
 const (
 	PerFrameDelayOf30FPS = (float64(1) / float64(30)) * 1000 // ms
+	ImgQueBufferSize     = 1 << 5  // avoid to use large size for image queue
+	PacketQueBufferSize  = 1 << 10
+	RawDataQueBufferSize = 1 << 10
 )
 
 type codecHandler struct {
@@ -27,16 +30,16 @@ type codecHandler struct {
 	swsCtx          *swscale.Context
 	yuvImgQueue     chan *image.YCbCr
 	h264PacketQueue chan *avcodec.Packet
-	rawData         chan []byte
+	rawDataQueue    chan []byte
 	stop            bool
 }
 
 func NewCodecHandler() *codecHandler {
 	return &codecHandler{
 		stop:            false,
-		yuvImgQueue:     make(chan *image.YCbCr, 1<<10),
-		h264PacketQueue: make(chan *avcodec.Packet, 1<<10),
-		rawData:         make(chan []byte, 1<<10),
+		yuvImgQueue:     make(chan *image.YCbCr, ImgQueBufferSize),
+		h264PacketQueue: make(chan *avcodec.Packet, PacketQueBufferSize),
+		rawDataQueue:    make(chan []byte, RawDataQueBufferSize),
 	}
 }
 
@@ -113,13 +116,13 @@ func (h *codecHandler) InitAndOpenH264Decoder() error {
 }
 
 func (h *codecHandler) PushRawData(data []byte) {
-	h.rawData <- data
+	h.rawDataQueue <- data
 }
 
 func (h *codecHandler) parserH264Packet() {
 	data := make([]byte, 0, 1<<10)
 	succZeroCnt := 0 // successive zero cnt
-	for raw := range h.rawData {
+	for raw := range h.rawDataQueue {
 		for i := 0; i < len(raw); i++ {
 			b := raw[i]
 			data = append(data, b)
@@ -161,10 +164,11 @@ func (h *codecHandler) productOnePacket(packetData []byte) {
 func (h *codecHandler) H264Decode() {
 	for packet := range h.h264PacketQueue {
 		if errno := h.codecCtx.AvcodecSendPacket(packet); errno < 0 {
-			log.Printf("AvcodecSendPacket error: %v\n", avutil.ErrorFromCode(errno))
+			// log.Printf("AvcodecSendPacket error: %v\n", avutil.ErrorFromCode(errno))
 			continue
 		}
 		packet.AvFreePacket()
+		packet.AvPacketUnref()
 		avutil.AvFree(unsafe.Pointer(packet.Data()))
 		for {
 			if errno := h.codecCtx.AvcodecReceiveFrame((*avcodec.Frame)(unsafe.Pointer(h.frameYUV))); errno == avutil.AvErrorEAGAIN || errno == avutil.AvErrorEOF {
@@ -173,12 +177,13 @@ func (h *codecHandler) H264Decode() {
 				log.Fatalf("AvcodecReceiveFrame error: %v", avutil.ErrorFromCode(errno))
 			}
 
-			yuvImg, err := avutil.GetPicture(h.frameYUV)
+			yuvImg, err := frameToYUVPic(h.frameYUV)
 			if err != nil {
 				log.Fatalf("avutil.GetPicture error: %v\n", err)
 				return
 			}
 			h.yuvImgQueue <- yuvImg
+			avutil.AvFrameUnref(h.frameYUV)
 		}
 	}
 }
