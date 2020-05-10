@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	queBuffer = 32   // avoid to use large buffer
+	queBuffer = 1 << 5   // avoid to use large buffer
 )
 
 

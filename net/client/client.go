@@ -94,6 +94,8 @@ func transmit(conn net.Conn) {
 			if err != nil {
 				log.Fatalf("write error: %v", err)
 			}
+			p.AvPacketUnref()
+			p.AvFreePacket()
 		}
 	}()
 

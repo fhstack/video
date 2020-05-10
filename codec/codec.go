@@ -18,8 +18,8 @@ import (
 const (
 	PerFrameDelayOf30FPS = (float64(1) / float64(30)) * 1000 // ms
 	ImgQueBufferSize     = 1 << 5  // avoid to use large size for image queue
-	PacketQueBufferSize  = 1 << 10
-	RawDataQueBufferSize = 1 << 10
+	PacketQueBufferSize  = 1 << 5
+	RawDataQueBufferSize = 1 << 6
 )
 
 type codecHandler struct {
@@ -312,7 +312,6 @@ func (h *codecHandler) H264EncoderInputRGBImage(img image.Image) error {
 	}
 	numbytes := avcodec.AvpictureGetSize(avcodec.AV_PIX_FMT_RGBA, h.codecCtx.Width(), h.codecCtx.Height())
 	buffer := avutil.AvMalloc(uintptr(numbytes))
-	defer avutil.AvFree(buffer)
 	var offset uintptr
 	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
 		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
@@ -333,6 +332,11 @@ func (h *codecHandler) H264EncoderInputRGBImage(img image.Image) error {
 	if err := avutil.AvSetFrame(frameRGBA, h.codecCtx.Width(), h.codecCtx.Height(), avcodec.AV_PIX_FMT_RGBA); err != nil {
 		return fmt.Errorf("avutil.AvSetFrame error: %v", err)
 	}
+	defer func() {
+		avutil.AvFrameUnref(frameRGBA)
+		avutil.AvFrameFree(frameRGBA)
+		avutil.AvFree(buffer)
+	}()
 
 	avpicture := (*avcodec.Picture)(unsafe.Pointer(frameRGBA))
 	if errno := avpicture.AvpictureFill((*uint8)(buffer), avcodec.AV_PIX_FMT_RGBA,
