@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"github.com/l-f-h/rudp"
 	"log"
 	"net"
 	"net/http"
@@ -16,10 +18,22 @@ import (
 )
 
 func main() {
+	var protocol string
+	flag.StringVar(&protocol, "p", "unknown", "udp/rudp/tcp")
+	flag.Parse()
 	go func() {
 		log.Println(http.ListenAndServe("localhost:10000", nil))
 	}()
-	sdl.Main(udp)
+	switch protocol {
+	case "tcp":
+		sdl.Main(tcp)
+	case "udp":
+		sdl.Main(udp)
+	case "rudp":
+		sdl.Main(rUDP)
+	default:
+		log.Fatalf("protocol error")
+	}
 }
 
 func tcp() {
@@ -47,6 +61,17 @@ func udp() {
 		log.Fatalf("conn.SetWriteBuffer error: %v", err)
 	}
 
+	transmit(conn)
+}
+
+func rUDP() {
+	rudp.Debug()
+	conn, err := rudp.DialRUDP(nil, &net.UDPAddr{
+		Port: 9999,
+	})
+	if err != nil {
+		log.Fatalf("net.DialRUDP error: %v", err)
+	}
 	transmit(conn)
 }
 

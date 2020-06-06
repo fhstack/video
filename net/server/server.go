@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"github.com/l-f-h/rudp"
 	"github.com/l-f-h/video/codec"
 	"github.com/veandco/go-sdl2/sdl"
 	"io"
@@ -13,11 +15,22 @@ import (
 )
 
 func main() {
+	var protocol string
+	flag.StringVar(&protocol, "p", "unknown", "udp/rudp/tcp")
+	flag.Parse()
 	go func() {
 		log.Println(http.ListenAndServe("localhost:9999", nil))
 	}()
-
-	sdl.Main(udp)
+	switch protocol {
+	case "tcp":
+		sdl.Main(tcp)
+	case "udp":
+		sdl.Main(udp)
+	case "rudp":
+		sdl.Main(rUDP)
+	default:
+		log.Fatalf("protocol error")
+	}
 }
 
 func tcp() {
@@ -47,6 +60,25 @@ func udp() {
 	decodeH264Stream(conn)
 }
 
+func rUDP() {
+	rudp.Debug()
+	listener, err := rudp.ListenRUDP(&net.UDPAddr{
+		Port: 9999,
+	})
+	if err != nil {
+		log.Fatalf("rudp.ListenRUDP error: %v", err)
+	}
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatalf("listener.Accept error: %v", err)
+		}
+		go func(c net.Conn) {
+			decodeH264Stream(c)
+		}(conn)
+	}
+}
+
 func decodeH264Stream(conn net.Conn) {
 	over := make(chan struct{})
 	codecHandler := codec.NewCodecHandler()
@@ -62,7 +94,7 @@ func decodeH264Stream(conn net.Conn) {
 		}()
 
 		for {
-			data := make([]byte, 65536)
+			data := make([]byte, 1024*30)
 			n, err := conn.Read(data)
 			if err != nil {
 				if err == io.EOF {

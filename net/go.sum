@@ -6,8 +6,10 @@ github.com/gosuri/uilive v0.0.0-20170323041506-ac356e6e42cd/go.mod h1:qkLSc0A5EX
 github.com/gosuri/uilive v0.0.4/go.mod h1:V/epo5LjjlDE5RJUcqx8dbw+zc93y5Ya3yg8tfZ74VI=
 github.com/gosuri/uiprogress v0.0.0-20170224063937-d0567a9d84a1/go.mod h1:C1RTYn4Sc7iEyf6j8ft5dyoZ4212h8G1ol9QQluh5+0=
 github.com/gosuri/uiprogress v0.0.1/go.mod h1:C1RTYn4Sc7iEyf6j8ft5dyoZ4212h8G1ol9QQluh5+0=
-github.com/l-f-h/video v0.0.0-20200503152941-73b58ff7ecf6 h1:EafeQqIs7VKFLkclKp2i7uc0/1bnepzxtIFO/z204PQ=
-github.com/l-f-h/video v0.0.0-20200503152941-73b58ff7ecf6/go.mod h1:mYUNQ9+IBVRCguPnVytjWzDlNQ+puCgyykHqZ6YJDYU=
+github.com/l-f-h/rudp v0.0.0-20200513211651-95efc3852be3 h1:R8PfMdg2IMl52EuMl/J3A0nzhg2cvRThnTQJMnzMwX8=
+github.com/l-f-h/rudp v0.0.0-20200513211651-95efc3852be3/go.mod h1:L4ZTtg3hKljss0zYav2ZcXfrEAchIWWkhyoiZvffkqI=
+github.com/l-f-h/rudp v0.0.0-20200606033844-4bcf02f70785 h1:DR0WX6hLVG70e2BoJ1VZgatvOt3DI5/YY/N2G8b+jm0=
+github.com/l-f-h/rudp v0.0.0-20200606033844-4bcf02f70785/go.mod h1:L4ZTtg3hKljss0zYav2ZcXfrEAchIWWkhyoiZvffkqI=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
