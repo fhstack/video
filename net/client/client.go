@@ -37,7 +37,9 @@ func main() {
 }
 
 func tcp() {
-	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
+    conn, err := net.DialTCP("tcp", &net.TCPAddr{
+        Port: 8899,
+    }, &net.TCPAddr{
 		Port: 8888,
 	})
 
@@ -49,7 +51,9 @@ func tcp() {
 }
 
 func udp() {
-	conn, err := net.DialUDP("udp", nil, &net.UDPAddr{
+    conn, err := net.DialUDP("udp", &net.UDPAddr{
+        Port: 8899,
+    }, &net.UDPAddr{
 		Port: 8888,
 	})
 
@@ -66,8 +70,10 @@ func udp() {
 
 func rUDP() {
 	rudp.Debug()
-	conn, err := rudp.DialRUDP(nil, &net.UDPAddr{
-		Port: 9999,
+    conn, err := rudp.DialRUDP(&net.UDPAddr{
+        Port: 8899,
+    }, &net.UDPAddr{
+		Port: 8888,
 	})
 	if err != nil {
 		log.Fatalf("net.DialRUDP error: %v", err)

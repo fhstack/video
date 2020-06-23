@@ -63,7 +63,7 @@ func udp() {
 func rUDP() {
 	rudp.Debug()
 	listener, err := rudp.ListenRUDP(&net.UDPAddr{
-		Port: 9999,
+		Port: 8888,
 	})
 	if err != nil {
 		log.Fatalf("rudp.ListenRUDP error: %v", err)
